@@ -1,0 +1,86 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install keyboard soundcard numpy scipy mss opencv-python pillow pyinstaller
+
+      - name: 生成 spec 文件
+        shell: python
+        run: |
+          spec = r'''
+          # -*- mode: python ; coding: utf-8 -*-
+          from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs, collect_data_files
+          sc_hidden = collect_submodules('soundcard')
+          sc_bins   = collect_dynamic_libs('soundcard')
+          sc_datas  = collect_data_files('soundcard')
+          a = Analysis(
+              ['fishing_gui.py'],
+              pathex=[],
+              binaries=sc_bins,
+              datas=sc_datas,
+              hiddenimports=sc_hidden + [
+                  'keyboard','cffi','_cffi_backend',
+                  'soundcard.mediafoundation','soundcard.coreaudio',
+                  'scipy.signal','scipy.io.wavfile',
+                  'numpy','cv2','mss',
+                  'PIL','PIL.Image','PIL.ImageTk',
+                  'tkinter','tkinter.filedialog','tkinter.messagebox','tkinter.ttk',
+                  'winsound',
+              ],
+              hookspath=[],hooksconfig={},runtime_hooks=[],
+              excludes=[
+                  'matplotlib','pandas','PyQt5','PyQt6','PySide2','PySide6',
+                  'IPython','jupyter','notebook','pytest','sphinx',
+                  'PIL.ImageQt','numpy.f2py',
+                  'scipy.optimize','scipy.sparse','scipy.spatial','scipy.ndimage',
+                  'scipy.integrate','scipy.interpolate','scipy.stats','scipy.linalg',
+              ],
+              win_no_prefer_redirects=False,win_private_assemblies=False,
+              cipher=None,noarchive=False,
+          )
+          pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+          exe = EXE(pyz, a.scripts, [], exclude_binaries=True,
+              name='FishingBot', debug=False, bootloader_ignore_signals=False,
+              strip=False, upx=False, console=False, disable_windowed_traceback=False,
+              argv_emulation=False, target_arch=None, codesign_identity=None,
+              entitlements_file=None)
+          coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas,
+              strip=False, upx=False, upx_exclude=[], name='FishingBot')
+          '''
+          with open('FishingBot.spec', 'w', encoding='utf-8') as f:
+              f.write(spec)
+
+      - name: 打包 exe
+        run: pyinstaller FishingBot.spec
+
+      - name: 拷贝音效模板到产物目录
+        run: |
+          if (Test-Path "bite_clean_10.5_to_12.wav") {
+            Copy-Item "bite_clean_10.5_to_12.wav" "dist\FishingBot\"
+          }
+
+      - name: 上传打包结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: FishingBot-Windows
+          path: dist/FishingBot/
+          retention-days: 30
