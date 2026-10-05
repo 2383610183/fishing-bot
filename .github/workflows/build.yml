@@ -13,6 +13,14 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 打印仓库目录结构（调试用）
+        run: |
+          echo "===== 仓库根目录所有文件 ====="
+          Get-ChildItem -Force -Recurse -Depth 2 | Select-Object FullName
+          echo ""
+          echo "===== 查找所有 .py 文件 ====="
+          Get-ChildItem -Recurse -Filter *.py | Select-Object FullName
+
       - name: 安装 Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -23,7 +31,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install keyboard soundcard numpy scipy mss opencv-python pillow pyinstaller
 
-      - name: 生成 spec 文件
+      - name: 定位 fishing_gui.py 并准备目录
+        shell: pwsh
+        run: |
+          # 找 fishing_gui.py（不管在哪个子目录）
+          $found = Get-ChildItem -Recurse -Filter "fishing_gui.py" | Select-Object -First 1
+          if (-not $found) {
+            Write-Error "仓库里根本没有 fishing_gui.py，请先上传"
+            exit 1
+          }
+          Write-Host "找到源码：$($found.FullName)"
+          # 拷到根目录
+          Copy-Item $found.FullName ".\fishing_gui.py" -Force
+          Write-Host "已复制到：$PWD\fishing_gui.py"
+
+      - name: 定位 wav 模板并准备
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Recurse -Filter "bite_clean_10.5_to_12.wav" | Select-Object -First 1
+          if ($found) {
+            Copy-Item $found.FullName ".\bite_clean_10.5_to_12.wav" -Force
+            Write-Host "找到音效：$($found.FullName)"
+          } else {
+            Write-Host "警告：没找到 wav 模板，只出 exe"
+          }
+
+      - name: 生成 spec
         shell: python
         run: |
           spec = r'''
@@ -72,7 +105,8 @@ jobs:
       - name: 打包 exe
         run: pyinstaller FishingBot.spec
 
-      - name: 拷贝音效模板到产物目录
+      - name: 拷贝音效模板到产物
+        shell: pwsh
         run: |
           if (Test-Path "bite_clean_10.5_to_12.wav") {
             Copy-Item "bite_clean_10.5_to_12.wav" "dist\FishingBot\"
